@@ -1,0 +1,105 @@
+#!/usr/bin/env -S sbcl --script
+;;; lfetch.lisp --- show system information (macos)       -*- lisp -*-
+
+(require :asdf)
+
+(defun sh (&rest args)
+  (handler-case
+      (string-trim '(#\Newline #\Space #\Tab)
+                   (uiop:run-program args :output :string
+                                     :error-output nil
+                                     :ignore-error-status t))
+    (error () "unknown")))
+
+(defun sysctl (key) (sh "sysctl" "-n" key))
+
+(defun uptime-string ()
+  (let* ((s (sysctl "kern.boottime"))
+         (p (search "sec = " s)))
+    (if (null p)
+        "unknown"
+      (let* ((boot (parse-integer s :start (+ p 6) :junk-allowed t))
+             (secs (- (- (get-universal-time) 2208988800) boot)))
+        (multiple-value-bind (d r) (floor secs 86400)
+                             (multiple-value-bind (h r2) (floor r 3600)
+                                                  (format nil "~Dd ~Dh ~Dm" d h (floor r2 60))))))))
+
+(defun packages ()
+  (let* ((brew (sh "sh" "-c" "brew list 2>/dev/null | wc -l"))
+         (mise (sh "sh" "-c" "mise ls --current --no-header 2>/dev/null | wc -l")))
+    (format nil "~A (brew), ~A (mise)" brew mise)))
+
+(defun resolution ()
+  (let* ((out (sh "system_profiler" "SPDisplaysDataType"))
+         (lines (uiop:split-string out :separator '(#\Newline)))
+         (found (loop for l in lines
+                      for p = (search "Resolution:" l)
+                      when p collect (string-trim " " (subseq l (+ p 11))))))
+    (if found
+        (format nil "~{~A~^, ~}" found)
+      "unknown")))
+
+(defun info ()
+  (let ((mem (/ (parse-integer (sysctl "hw.memsize")) (expt 1024 3))))
+    (list
+     (cons "OS"         (format nil "~A ~A (~A)"
+                                (sh "sw_vers" "-productName")
+                                (sh "sw_vers" "-productVersion")
+                                (sh "sw_vers" "-buildVersion")))
+     (cons "Host"       (sysctl "hw.model"))
+     (cons "Kernel"     (sh "uname" "-sr"))
+     (cons "Arch"       (sh "uname" "-m"))
+     (cons "Uptime"     (uptime-string))
+     (cons "Packages"   (packages))
+     (cons "CPU"        (sysctl "machdep.cpu.brand_string"))
+     (cons "Resolution" (resolution))
+     (cons "Memory"     (format nil "~,1F GiB" mem))
+     (cons "Power"      (power))
+     (cons "DE/WM"      (de-wm))
+     (cons "Shell"      (or (uiop:getenv "SHELL") "unknown"))
+     (cons "Terminal"   (or (uiop:getenv "TERM_PROGRAM") "unknown"))
+     (cons "SBCL"       (lisp-implementation-version)))))
+
+(defun main ()
+  (unless (uiop:os-macosx-p)
+    (format t "This fetch only recognizes macOS.~%")
+    (uiop:quit 1))
+  (let ((logo '("          .:'   "
+                "      __ :'__   "
+                "   .'`__`-'__``."
+                "  :__________.-'"
+                "  :_________:   "
+                "  :_________`-; "
+                "   `.__.-.__.'  "))
+        (rows (info)))
+    (format t "~A@~A~%" (or (uiop:getenv "USER") "user") (sh "hostname" "-s"))
+    (loop for i from 0
+          for line = (nth i logo)
+          for row  = (nth i rows)
+          while (or line row)
+          do (format t "~20A ~A~%"
+                     (or line "")
+                     (if row (format nil "~A: ~A" (car row) (cdr row)) "")))))
+
+(defun power ()
+  (let* ((out (sh "pmset" "-g" "batt"))
+         (src (cond ((search "AC Power" out) "AC")
+                    ((search "Battery Power" out) "Battery")
+                    (t "unknown")))
+         (p (position #\% out)))
+    (if p
+        (let* ((start (or (position-if-not #'digit-char-p out :end p :from-end t) -1))
+               (pct (subseq out (1+ start) p)))
+          (format nil "~A% (~A)" pct src))
+      (format nil "~A (no battery)" src))))
+
+(defun de-wm ()
+  (let* ((wms '("yabai" "AeroSpace" "Amethyst" "Rectangle"))
+         (wm (find-if (lambda (p) (plusp (length (sh "pgrep" "-x" p)))) wms)))
+    (if wm
+        (format nil "Aqua + ~A" wm)
+      "Aqua (WindowServer)")))
+
+(main)
+
+;;; lfetch.lisp ends here

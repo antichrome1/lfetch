@@ -10,8 +10,6 @@ Install sbcl, make `lfetch` executable and run:
 $ ./lfetch
 ```
 
-[ASCII art source](https://www.asciiart.eu/art/afdfab7c353c0f60)
-
 # License
 
 ISC © 2026 Aditya Singh <antichrome1@proton.me>

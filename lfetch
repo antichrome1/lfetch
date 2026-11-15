@@ -64,7 +64,7 @@
   (unless (uiop:os-macosx-p)
     (format t "This fetch only recognizes macOS.~%")
     (uiop:quit 1))
-  (let ((logo '("          .:'   "
+  (let ((logo '("          .:'   "      ; source: https://www.asciiart.eu/art/afdfab7c353c0f60
                 "      __ :'__   "
                 "   .'`__`-'__``."
                 "  :__________.-'"
